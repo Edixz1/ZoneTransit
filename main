@@ -1,0 +1,118 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.IO;
+using System.Threading;
+
+namespace Mission
+{
+    class Program
+    {
+        class ZoneTransite<T>
+        {
+            List<T> data = new List<T>();
+            object mutex = new object();
+            public void Ajouter(List<T> lst)
+            {
+                lock (mutex)
+                    data.AddRange(lst);
+            }
+            public List<T> Extraire()
+            {
+                var lst = new List<T>();
+                lock (mutex)
+                    Permuter(ref lst, ref data);
+                return lst;         
+            }
+            static void Permuter<T>(ref T a, ref T b)
+            {
+                T temp = a;
+                a = b;
+                b = temp;
+            }
+        }
+        static string LireFichier(string nom)
+        {
+            using (var sr = new StreamReader(nom))
+                return sr.ReadToEnd();
+        }
+        static void Ecrire(string nom, string texte)
+        {
+            using (var sw = new StreamWriter(nom))
+                sw.Write(texte);
+        }
+        static string TransformerMajuscules(string s) => s.ToUpper();
+        static void Main(string[] args)
+        {
+            string[] noms = new[] { "../../Program.cs" , "../../Test.txt"};
+            const int NB_FILS = 3;
+            var canaux = new ZoneTransite<(string, string)>[NB_FILS-1];
+            for (int i = 0; i != canaux.Length; ++i)
+                canaux[i] = new ZoneTransite<(string, string)>();
+
+            bool[] terminer = new bool[NB_FILS - 1];
+
+            var fils = new Thread[NB_FILS] {
+                new Thread(() => {
+                    foreach(var nom in noms)
+                        canaux[0].Ajouter(new List<(string, string)>()
+                        {
+                            (LireFichier(nom),nom)
+                        });
+                    terminer[0] = true;
+                }),
+                new Thread(() => {
+                    while(!terminer[0]) // hum
+                    {
+                        var data = canaux[0].Extraire();
+                        if(data.Count > 0)
+                        {
+                            var res = new List<(string,string)>();
+                            foreach(var (texte,nom) in data)
+                                res.Add(
+                                    (TransformerMajuscules(texte), nom)    
+                                );
+                            canaux[1].Ajouter(res);
+                        }
+                    }
+                    {
+                        var data = canaux[0].Extraire();
+                        if(data.Count > 0)
+                        {
+                            var res = new List<(string,string)>();
+                            foreach(var (texte,nom) in data)
+                                res.Add(
+                                    (TransformerMajuscules(texte), nom)
+                                );
+                            canaux[1].Ajouter(res);
+                        }
+                    }
+                    terminer[1] = true;
+                }),
+                new Thread(() => {
+                     while(!terminer[1]) // hum
+                     {
+                        var data = canaux[1].Extraire();
+                            foreach(var (texte,nom) in data)
+                                Ecrire(nom +".nouveau", texte);
+                     }
+                     {
+                        var data = canaux[1].Extraire();
+                            foreach(var (texte,nom) in data)
+                                Ecrire(nom +".nouveau", texte);
+                     }
+                })
+            };
+            foreach (var fil in fils) fil.Start();
+            foreach (var fil in fils) fil.Join();
+
+            //foreach(string nom in noms)
+            //    Console.WriteLine(
+            //        TransformerMajuscules(LireFichier(nom))
+            //    );
+        }
+    }
+}
+
